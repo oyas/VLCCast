@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta charset="utf-8">
+		<title>VLCCast</title>
+		<script src="https://ajax.googleapis.com/ajax/libs/jquery/2.1.4/jquery.min.js"></script>
+	</head>
+	<body>
+		<div id="wrap">
+			<video id="video" width="100%" height="0" autoplay controls></video>
+			<img id="image">
+			<div id="info">
+				<p id="info_name"></p>
+				<p id="info_artist"></p>
+				<p id="info_url"></p>
+				<p id="info_other"></p>
+			</div>
+			<div id="time_wrap">
+				<p id="date"></p>
+				<p id="time"></p>
+			</div>
+		</div>
+		<style>
+* {
+	padding: 0;
+	margin: 0;
+}
+body {
+	background-color: #234;
+}
+#wrap {
+	padding: 50px;
+}
+#image {
+	display: block;
+	width: 300px;
+	height: 300px;
+	margin: 10px auto;
+}
+#info {
+	position: absolute;
+	bottom: 20px;
+}
+#info p {
+	margin: 10px;
+	font-size: 20px;
+	color: #fff;
+}
+#time_wrap {
+	position: absolute;
+	right: 80px;
+	bottom: 20px;
+	text-align: right;
+}
+#date {
+	font-size: 30px;
+	color: #fff;
+}
+#time {
+	font-size: 80px;
+	color: #fff;
+}
+		</style>
+
+		<script>
+// 時間表示の更新
+function time_update(){
+	var weeks = new Array('日','月','火','水','木','金','土');
+	var now = new Date();
+
+	var year = now.getYear(); // 年
+	var month = now.getMonth() + 1; // 月
+	var day = now.getDate(); // 日
+	var week = weeks[ now.getDay() ]; // 曜日
+	var hour = now.getHours(); // 時
+	var min = now.getMinutes(); // 分
+	var sec = now.getSeconds(); // 秒
+
+	if(year < 2000) { year += 1900; }
+
+	// 数値が1桁の場合、頭に0を付けて2桁で表示する指定
+	if(month < 10) { month = "0" + month; }
+	if(day < 10) { day = "0" + day; }
+	//if(hour < 10) { hour = "0" + hour; }
+	if(min < 10) { min = "0" + min; }
+	if(sec < 10) { sec = "0" + sec; }
+
+	$('#date').text( year + "/" + month + "/" + day + " (" + week + ")" );
+	$('#time').text( hour + ":" + min );
+}
+
+var v = document.getElementById("video");
+
+v.volume = 0.5;	// 初期音量の設定
+
+// vlc連携用
+var Controller_port = "8080";
+var Controller_url = "http://localhost:20080/get?status";	// VLCの操作した結果はJSONで受け取れる
+var Controller_url_playlist = "http://localhost:20080/get?playlist";	// プレイリスト取得用(uri取得用)
+var current_playlist_id = -1;
+var previous_playlist_id = -1;
+// VLCとの同期処理
+function sync(){
+	previous_playlist_id = current_playlist_id;
+	$.getJSON(Controller_url, function (json){
+		// 曲の同期
+		current_playlist_id = json.currentplid;
+		if( current_playlist_id != previous_playlist_id ){
+			// 曲の更新
+			syncsong();
+			var json_info = json.information.category.meta;
+			$('#info_name').text( decodeURI( json_info.title ) );
+			$('#info_artist').text( decodeURI( json_info.artist ) );
+			$('#image').attr( "src", json_info.artwork_url );
+		}
+		// 再生位置の同期
+		if( v.currentTime - json.time < -5 || v.currentTime - json.time > 1 ){
+			v.currentTime = json.time;
+		}
+	});
+	time_update();	//時刻の更新
+	setTimeout(sync, 3000);
+}
+function syncsong(){
+	$.getJSON(Controller_url_playlist, function (json){
+		v.src = getURI_fromPlaylist(json);
+//		$('#info_url').text( decodeURI(v.src) );
+		v.play();
+	});
+}
+function getURI_fromPlaylist(json){
+	var uri = "";
+	if( json.type == "node" ){
+		for( var child in json.children ){
+			uri = getURI_fromPlaylist( json.children[child] );
+			if( uri != "" ) break;
+		}
+	}else{
+		if( json.current == "current" ){
+			uri = json.uri;
+		}
+	}
+	return uri;
+}
+sync();	// VLCの監視開始
+		</script>
+
+	</body>
+</html>
